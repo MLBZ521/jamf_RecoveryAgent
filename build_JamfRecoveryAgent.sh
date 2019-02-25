@@ -3,16 +3,16 @@
 ###################################################################################################
 # Script Name:  build_JamfRecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/20/2019
-# Version:  1.0.0 / Updated:  2/20/2019 / By:  ZT
+# Version:  1.0.1 / Updated:  2/25/2019 / By:  ZT
 #
 # Description:  Builds the "setup" script for the JRA.
 #
 ###################################################################################################
 
 # Set working directory
-cwd=$(/usr/bin/dirname "${0}")
+cwd=$( /usr/bin/dirname "${0}" )
 jraScript=$( /bin/ls "${cwd}" | /usr/bin/grep "jamf_RecoveryAgent.sh" )
-launchDaemon=$( /bin/ls "${cwd}" | /usr/bin/grep -E ".*RecoveryAgent.plist" )
+launchDaemon=$( /bin/ls "${cwd}" | /usr/bin/grep -E ".*RecoveryAgent" | /usr/bin/sed 's/.plist//g' )
 
 # Insert code
 /bin/cat > "${cwd}/setup_JamfRecoveryAgent.sh" <<'EOFbuild'
@@ -84,7 +84,7 @@ if [[ -e "${scriptLocation}" && -e "${launchDaemonLocation}" ]]; then
 	echo "Setting permissions on the script..."
 	/bin/chmod 744 "${scriptLocation}"
 
-	# Check if the LaucnhDaemon is running, if so restart it in case a change was made to the plist file.
+	# Check if the LaunchDaemon is running, if so restart it in case a change was made to the plist file.
 	# Determine proper launchctl syntax based on OS Version.
 	if [[ $osVersion -ge 11 ]]; then
 		exitCode=$( /bin/launchctl print system/$launchDaemonLabel > /dev/null 2>&1; echo $? )
