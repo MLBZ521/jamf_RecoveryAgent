@@ -4,6 +4,8 @@
 <dict>
     <key>Label</key>
     <string>com.github.mlbz521.RecoveryAgent</string>
+    <key>ServiceDescription</key>
+    <string>Monitors the health of the Jamf Management Framework.</string>
     <key>ProgramArguments</key>
     <array>
 		<string>/bin/bash</string>
