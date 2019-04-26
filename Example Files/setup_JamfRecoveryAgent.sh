@@ -3,9 +3,9 @@
 ###################################################################################################
 # Script Name:  setup_JamfRecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/20/2019
-# Version:  1.0.0 / Updated:  2/20/2019 / By:  ZT
+# Version:  1.1.0 / Updated:  4/25/2019 / By:  ZT
 #
-# Description:  This script creates a LaunchDaemon and a Script, then loads the LaunchDaemon.
+# Description:  This script installs or uninstalls the JRA.
 #
 ###################################################################################################
 
@@ -14,26 +14,32 @@ echo "*****  setup_JamfRecoveryAgent process:  START  *****"
 ##################################################
 # Define Variables
 
+action="${4}"
 stageLocation="/private/var/jra"
 scriptLocation="${stageLocation}/jamf_RecoveryAgent.sh"
-launchDaemonLabel="edu.asu.RecoveryAgent.plist"
+launchDaemonLabel="com.github.mlbz521.RecoveryAgent"
 launchDaemonLocation="/Library/LaunchDaemons/${launchDaemonLabel}.plist"
 osVersion=$(/usr/bin/sw_vers -productVersion | /usr/bin/awk -F '.' '{print $2}')
 
 ##################################################
 # Bit staged...
 
-# Create the script...
-echo "Creating the Script..."
-/bin/mkdir -p "${stageLocation}"
+case $action in
 
-/bin/cat > "${scriptLocation}" <<'EOF'
+    "Install" )
+        echo "** Installing the Jamf Recovery Agent **"
+
+		# Create the script...
+		echo "Creating the Script..."
+		/bin/mkdir -p "${stageLocation}"
+
+		/bin/cat > "${scriptLocation}" <<'EOF'
 #!/bin/bash
 
 ###################################################################################################
 # Script Name:  jamf_RecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/14/2019
-# Version:  1.0.0 / Updated:  2/20/2019 / By:  ZT
+# Version:  1.1.0 / Updated:  2/21/2019 / By:  ZT
 #
 # Description:  This script checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
 #
@@ -115,7 +121,7 @@ checkNetwork() {
 
 	if [[ "${linkStatus}" == "active" ]]; then
         writeToLog "  -> Active interface:  ${defaultInterfaceID}"
-    else 
+    else
         writeToLog "  -> Notice:  Device is offline"
 		exitProcess "Device is offline" 1
 	fi
@@ -167,7 +173,7 @@ enrolledHealthCheck() {
 
     if [[ "${mdmProfilePresent}" != "" ]]; then
              writeToLog "  -> True"
-        else 
+        else
             writeToLog "  -> WARNING:  MDM Profile is missing!"
             manage
     fi
@@ -181,6 +187,7 @@ enrolledHealthCheck() {
     else
         writeToLog "  -> WARNING:  Root CA is missing!"
         "${jamfBinary}" trustJSS
+        /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  jamf trustJSS"
     fi
 }
 
@@ -188,7 +195,7 @@ enrolledHealthCheck() {
 checkValidationPolicy () {
     writeToLog "Testing if device can run a Policy..."
 	checkPolicy=$( "${jamfBinary}" policy -event $testTrigger | /usr/bin/grep "Policy Execution Successful!" )
-	
+
 	if [[ -n "${checkPolicy}" ]]; then
 		writeToLog "  -> Success"
 	else
@@ -215,6 +222,7 @@ checkBinaryPermissions() {
         /usr/bin/chflags nouchg "${jamfBinary}"
         /usr/sbin/chown 0:0 "${jamfBinary}"
         /bin/chmod 555 "${jamfBinary}"
+        /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  Reset Permissions"
     fi
 }
 
@@ -228,6 +236,7 @@ restoreJamfBinary() {
         /bin/cp -f "${recoveryFiles}/jamf"  "${jamfBinary}"
         /bin/ln -s "${jamfBinary}" /usr/local/bin
         checkBinaryPermissions
+        /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  Restored Binary"
     else
         writeToLog "  -> WARNING:  Unable to locate the Jamf Binary in the Recovery Files!"
         exitProcess "Missing Recovery Jamf Binary" 3
@@ -244,7 +253,7 @@ manage() {
         "${jamfBinary}" createConf -url "${jss_url}" -verifySSLCert "${verifySSLCert}"
         /bin/cp -f "${recoveryFiles}/JAMF.keychain" "/Library/Application Support/JAMF/"
         "${jamfBinary}" manage #? -forceMdmEnrollment
-
+        /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  jamf manage"
         manageAttempts=$(( manageAttempts + 1 ))
     elif [[ $maxManageAttempts -eq $manageAttempts ]]; then
         reenroll
@@ -258,6 +267,7 @@ manage() {
 reenroll() {
     writeToLog "  -> NOTICE: Reenrolling into Jamf"
     "${jamfBinary}" enroll -invitation "${invitationID}" -noRecon -noPolicy -reenroll -archiveDeviceCertificate
+    /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  jamf enroll"
 }
 
 # Run the 'jamf removeMdmProfile' command.
@@ -276,7 +286,7 @@ removeFramework() {
 checkRecoveryFiles() {
     writeToLog "Updating the Recovery Files..."
 
-    if [[ -e "${recoveryFiles}/jamf" ]]; then 
+    if [[ -e "${recoveryFiles}/jamf" ]]; then
         jamfBinaryVersion=$( "${jamfBinary}" version | /usr/bin/awk -F 'version=' '{print $2}' | /usr/bin/xargs )
         jamfRecoveryBinaryVersion=$( "${recoveryFiles}/jamf" version | /usr/bin/awk -F 'version=' '{print $2}' | /usr/bin/xargs )
 
@@ -320,7 +330,7 @@ done
 
 # Run through the functions...
 checkNetwork
-	checkJamfWebService
+    checkJamfWebService
         checkBinaryStatus
             checkBinaryConnection
                 enrolledHealthCheck
@@ -331,16 +341,18 @@ exitProcess "Enabled" 0
 EOF
 
 
-# Create the Launch Daemon...
-echo "Creating the LaunchDaemon..."
+		# Create the Launch Daemon...
+		echo "Creating the LaunchDaemon..."
 
-/bin/cat > "${launchDaemonLocation}" <<EOF
+		/bin/cat > "${launchDaemonLocation}" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
     <string>com.github.mlbz521.RecoveryAgent</string>
+    <key>ServiceDescription</key>
+    <string>Monitors the health of the Jamf Management Framework.</string>
     <key>ProgramArguments</key>
     <array>
 		<string>/bin/bash</string>
@@ -360,43 +372,70 @@ echo "Creating the LaunchDaemon..."
 </plist>
 EOF
 
+		# Verify the files exist...
+		if [[ -e "${scriptLocation}" && -e "${launchDaemonLocation}" ]]; then
 
-# Verify the files exist...
-if [[ -e "${scriptLocation}" && -e "${launchDaemonLocation}" ]]; then
+			echo "Setting permissions on the script..."
+			/bin/chmod 744 "${scriptLocation}"
 
-	echo "Setting permissions on the script..."
-	/bin/chmod 744 "${scriptLocation}"
+			# Check if the LaunchDaemon is running, if so restart it in case a change was made to the plist file.
+			# Determine proper launchctl syntax based on OS Version.
+			if [[ $osVersion -ge 11 ]]; then
+				exitCode=$( /bin/launchctl print system/$launchDaemonLabel > /dev/null 2>&1; echo $? )
 
-	# Check if the LaucnhDaemon is running, if so restart it in case a change was made to the plist file.
-	# Determine proper launchctl syntax based on OS Version.
-	if [[ $osVersion -ge 11 ]]; then
-		exitCode=$( /bin/launchctl print system/$launchDaemonLabel > /dev/null 2>&1; echo $? )
+				if [[ $exitCode == 0 ]]; then
+					echo "LaunchDaemon is currently started; stopping now..."
+					/bin/launchctl bootout system/$launchDaemonLabel
+				fi
 
-		if [[ $exitCode == 0 ]]; then
-			echo "LaunchDaemon is currently started; stopping now..."
-			/bin/launchctl bootout system/$launchDaemonLabel
+				echo "Loading LaunchDaemon..."
+				/bin/launchctl bootstrap system "${launchDaemonLocation}"
+				/bin/launchctl enable system/$launchDaemonLabel
+
+			elif [[ $osVersion -le 10 ]]; then
+				exitCode=$(/bin/launchctl list $launchDaemonLabel > /dev/null 2>&1; echo $? )
+
+				if [[ $exitCode == 0 ]]; then
+					echo "LaunchDaemon is currently started; stopping now..."
+					/bin/launchctl unload "${launchDaemonLocation}"
+				fi
+
+				echo "Loading LaunchDaemon..."
+				/bin/launchctl load "${launchDaemonLocation}"
+			fi
+
+			echo "*****  setup_JamfRecoveryAgent process:  COMPLETE  *****"
+		else
+			echo "*****  setup_JamfRecoveryAgent process:  FAILED  *****"
+			exit 1
 		fi
+	;;
 
-		echo "Loading LaunchDaemon..."
-		/bin/launchctl bootstrap system "${launchDaemonLocation}"
-		/bin/launchctl enable system/$launchDaemonLabel
+    "Uninstall" )
+        echo "Uninstalling the Jamf Recovery Agent..."
+        # Check if the LaunchDaemon is running.
+        # Determine proper launchctl syntax based on OS Version.
+        if [[ $osVersion -ge 11 ]]; then
+            exitCode=$( /bin/launchctl print system/$launchDaemonLabel > /dev/null 2>&1; echo $? )
 
-	elif [[ $osVersion -le 10 ]]; then
-		exitCode=$(/bin/launchctl list $launchDaemonLabel > /dev/null 2>&1; echo $? )
+            if [[ $exitCode == 0 ]]; then
+                echo "Stopping the JRA LaunchDaemon..."
+                /bin/launchctl bootout system/$launchDaemonLabel
+            fi
+        elif [[ $osVersion -le 10 ]]; then
+            exitCode=$(/bin/launchctl list $launchDaemonLabel > /dev/null 2>&1; echo $? )
 
-		if [[ $exitCode == 0 ]]; then
-			echo "LaunchDaemon is currently started; stopping now..."
-			/bin/launchctl unload "${launchDaemonLocation}"
-		fi
+            if [[ $exitCode == 0 ]]; then
+                echo "Stopping the JRA LaunchDaemon..."
+                /bin/launchctl unload "${launchDaemonLocation}"
+            fi
+        fi
 
-		echo "Loading LaunchDaemon..."
-		/bin/launchctl load "${launchDaemonLocation}"
-	fi
+        echo "Removing files..."
+        /bin/rm -f "${launchDaemonLocation}"
+        /bin/rm -rf "${stageLocation}"
+    ;;
 
-	echo "*****  setup_JamfRecoveryAgent process:  COMPLETE  *****"
-else
-	echo "*****  setup_JamfRecoveryAgent process:  FAILED  *****"
-	exit 1
-fi
+esac
 
 exit 0
