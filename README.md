@@ -3,6 +3,8 @@ jamf_RecoveryAgent
 
 A LaunchDaemon that monitors the health of the Jamf Management Framework.
 
+**New:**  Added support to remove the JRA for situations where the device needs to be legitimately unmanaged and will not be wiped.  `setup_JamfRecoveryAgent.sh` expects either `Install` or `Uninstall` passed via Script Parameter 1.
+
 ## Overview
 
 Essentially this workflow checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
@@ -68,8 +70,8 @@ This flowchart goes through the steps the JRA goes through to test the state of 
 ##### Customize:
   * Edit the variables needed in the script
     * `jamf_RecoveryAgent.sh`
-  * Add a valid plist domain as a filename prefix and match the Label value as well.
-    * `RecoveryAgent.plist`
+  * Edit the plist domain as desired and match the Label value as well.
+    * `com.github.mlbz521.RecoveryAgent.plist`
   * Run the `build_JamfRecoveryAgent.sh` script which will create the script
     * `setup_JamfRecoveryAgent.sh`
 
@@ -89,6 +91,7 @@ This flowchart goes through the steps the JRA goes through to test the state of 
       * Target:  All Computers
     * Scripts Payload
       * Add the `setup_JamfRecoveryAgent.sh` Script
+        * Script Parameter 1:  [ Install | Uninstall ]
   * Policy 2
     * Purpose:  Validation Policy that is called by a Custom Trigger
     * Event:
