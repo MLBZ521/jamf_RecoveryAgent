@@ -3,7 +3,7 @@
 ###################################################################################################
 # Script Name:  jamf_ea_JamfRecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/20/2019
-# Version:  1.1.0 / Updated:  2/21/2019 / By:  ZT
+# Version:  1.1.1 / Updated:  4/26/2019 / By:  ZT
 #
 # Description:  A Jamf Extension Attribute to get the last reported status of the JRA.
 #
@@ -14,14 +14,29 @@ recoveryFiles="/private/var/jra"
 # Set a custom plist domain.
 plistdomain="com.github.mlbz521"
 
+# This is a helper function to interact with the JRA plist.
+defaultsCMD() {
+    case $1 in
+        "read" )
+            /usr/bin/defaults read "${recoveryFiles}/${plistdomain}.jra.plist" $2 2> /dev/null
+        ;;
+        "write" )
+            /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" $2 "${3}" 2> /dev/null
+        ;;
+        "delete" )
+            /usr/bin/defaults delete "${recoveryFiles}/${plistdomain}.jra.plist" $2 2> /dev/null
+        ;;
+    esac
+}
+
 if [[ -e "${recoveryFiles}/${plistdomain}.jra.plist" ]]; then
-    result=$( /usr/bin/defaults read "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed )
+    result=$( defaultsCMD read repair_performed )
 
     if [[ $? == 0 ]]; then
-        /usr/bin/defaults delete "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed
+        defaultsCMD delete repair_performed
     	echo "<result>${result}</result>"
     else
-        result=$( /usr/bin/defaults read "${recoveryFiles}/${plistdomain}.jra.plist" last_Result )
+        result=$( defaultsCMD read last_Result )
 
         if [[ $? == 0 ]]; then
             echo "<result>${result}</result>"
