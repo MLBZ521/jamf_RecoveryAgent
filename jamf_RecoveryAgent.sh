@@ -3,17 +3,17 @@
 ###################################################################################################
 # Script Name:  jamf_RecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/14/2019
-# Version:  1.1.0 / Updated:  2/21/2019 / By:  ZT
+# Version:  1.2.0 / Updated:  4/26/2019 / By:  ZT
 #
 # Description:  This script checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
 #
 # Inspired by several other projects and discussions on JamfNation:
-#	Rich Trouton/(derflounder)'s CasperCheck
+#    Rich Trouton/(derflounder)'s CasperCheck
 #       - https://github.com/rtrouton/CasperCheck
-#	Several Jamf projects:
+#    Several Jamf projects:
 #       - https://github.com/jamf/autoenroll
 #       - https://github.com/jamf/JSSBinarySelfHeal
-#	And all the sites and threads I've read regarding Jamf managed state recovery methods
+#    And all the sites and threads I've read regarding Jamf managed state recovery methods
 #
 ###################################################################################################
 
@@ -63,16 +63,30 @@ fi
 
 # This function writes to the defined log.
 writeToLog() {
-	timeStamp=$(date +%Y-%m-%d\ %H:%M:%S)
-	#echo "$DATE" " $1" >> $LOG
-	message="${1}"
-	echo "${timeStamp}:  ${message}" >> "${logFile}"
+    timeStamp=$( /bin/date +%Y-%m-%d\ %H:%M:%S )
+    message="${1}"
+    echo "${timeStamp}:  ${message}" >> "${logFile}"
+}
+
+# This is a helper function to interact with the JRA plist.
+defaultsCMD() {
+    case $1 in
+        "read" )
+            /usr/bin/defaults read "${recoveryFiles}/${plistdomain}.jra.plist" $2 2> /dev/null
+        ;;
+        "write" )
+            /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" $2 "${3}" 2> /dev/null
+        ;;
+        "delete" )
+            /usr/bin/defaults delete "${recoveryFiles}/${plistdomain}.jra.plist" $2 2> /dev/null
+        ;;
+    esac
 }
 
 # This function handles the exit process of the script.
 exitProcess() {
     writeToLog "Result: ${1}"
-    /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" last_Result "${1}"
+    defaultsCMD write last_Result "${1}"
     writeToLog "*****  jamf_RecoveryAgent Process:  COMPLETE  *****"
     exit $2
 }
@@ -80,28 +94,28 @@ exitProcess() {
 # Check for a valid IP address and can connect to the "outside world"; returns result.
 checkNetwork() {
     writeToLog "Testing if the device has an active network interface..."
-	defaultInterfaceID=$( /sbin/route get default | /usr/bin/awk -F 'interface: ' '{print $2}' | /usr/bin/xargs )
-	linkStatus=$( /sbin/ifconfig "${defaultInterfaceID}" | /usr/bin/awk -F 'status: ' '{print $2}' | /usr/bin/xargs )
+    defaultInterfaceID=$( /sbin/route get default | /usr/bin/awk -F 'interface: ' '{print $2}' | /usr/bin/xargs )
+    linkStatus=$( /sbin/ifconfig "${defaultInterfaceID}" | /usr/bin/awk -F 'status: ' '{print $2}' | /usr/bin/xargs )
 
-	if [[ "${linkStatus}" == "active" ]]; then
+    if [[ "${linkStatus}" == "active" ]]; then
         writeToLog "  -> Active interface:  ${defaultInterfaceID}"
     else
         writeToLog "  -> Notice:  Device is offline"
-		exitProcess "Device is offline" 1
-	fi
+        exitProcess "Device is offline" 1
+    fi
 }
 
 # Verifies that the Jamf Pro Servers' Tomcat service is responding via its assigned port; returns result.
 checkJamfWebService() {
     writeToLog "Testing if the Jamf web service available..."
-	webService=$( /usr/bin/nc -z -w 5 $jamfURL $jamfPort > /dev/null 2>&1; echo $? )
+    webService=$( /usr/bin/nc -z -w 5 $jamfURL $jamfPort > /dev/null 2>&1; echo $? )
 
-	if [ "${webService}" -eq 0 ]; then
-		writeToLog "  -> Success"
-	else
-		writeToLog "  -> Failed"
-		exitProcess "JPS Web Service Unavailable" 2
-	fi
+    if [ "${webService}" -eq 0 ]; then
+        writeToLog "  -> Success"
+    else
+        writeToLog "  -> Failed"
+        exitProcess "JPS Web Service Unavailable" 2
+    fi
 }
 
 # Checking that the Jamf binary exists; returns result.
@@ -110,23 +124,23 @@ checkBinaryStatus() {
 
     if [[ -e "${jamfBinary}" ]]; then
         checkBinaryPermissions
-	else
-		writeToLog "  -> WARNING:  Unable to locate the Jamf Binary!"
-		restoreJamfBinary
-	fi
+    else
+        writeToLog "  -> WARNING:  Unable to locate the Jamf Binary!"
+        restoreJamfBinary
+    fi
 }
 
 # Verifies that the Jamf binary can successfully communicate with the Jamf Pro Server; returns result.
 checkBinaryConnection() {
     writeToLog "Testing if the Jamf Binary can communicate with the JPS..."
-	binaryCommunication=$( "${jamfBinary}" checkJSSConnection > /dev/null; echo $? )
+    binaryCommunication=$( "${jamfBinary}" checkJSSConnection > /dev/null; echo $? )
 
-	if [[ "$binaryCommunication" -eq 0 ]]; then
+    if [[ "$binaryCommunication" -eq 0 ]]; then
         writeToLog "  -> Success"
-	else
+    else
         writeToLog "  -> Failed"
         manage
-	fi
+    fi
 }
 
 # Checks the 'health' of the Jamf Management Framework
@@ -151,23 +165,23 @@ enrolledHealthCheck() {
     else
         writeToLog "  -> WARNING:  Root CA is missing!"
         "${jamfBinary}" trustJSS
-        /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  jamf trustJSS"
+        repairPerformed "Performed:  jamf trustJSS"
     fi
 }
 
 # Running a manual policy trigger to check jamf binary functionality; returns result.
 checkValidationPolicy () {
     writeToLog "Testing if device can run a Policy..."
-	checkPolicy=$( "${jamfBinary}" policy -event $testTrigger | /usr/bin/grep "Policy Execution Successful!" )
+    checkPolicy=$( "${jamfBinary}" policy -event $testTrigger | /usr/bin/grep "Policy Execution Successful!" )
 
-	if [[ -n "${checkPolicy}" ]]; then
-		writeToLog "  -> Success"
-	else
-		writeToLog "  -> WARNING:  Unable to execute Policy!"
-		manage
+    if [[ -n "${checkPolicy}" ]]; then
+        writeToLog "  -> Success"
+    else
+        writeToLog "  -> WARNING:  Unable to execute Policy!"
+        manage
         # After attempting to recover, try executing again.
         checkValidationPolicy
-	fi
+    fi
 }
 
 # Checking the permissions on the Jamf binary; returns result.
@@ -178,15 +192,15 @@ checkBinaryPermissions() {
 
     # Verifying Permissions
     if [[ $currentPermissions == "555" && $currentOwner == "root:wheel" ]]; then
-		 writeToLog "  -> Proper permissions set"
-	else
-		writeToLog "  -> WARNING:  Improper permissions found!"
+         writeToLog "  -> Proper permissions set"
+    else
+        writeToLog "  -> WARNING:  Improper permissions found!"
         writeToLog "    -> Setting proper permissions..."
         /usr/bin/chflags noschg "${jamfBinary}"
         /usr/bin/chflags nouchg "${jamfBinary}"
         /usr/sbin/chown 0:0 "${jamfBinary}"
         /bin/chmod 555 "${jamfBinary}"
-        /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  Reset Permissions"
+        repairPerformed "Performed:  Reset Permissions"
     fi
 }
 
@@ -200,7 +214,7 @@ restoreJamfBinary() {
         /bin/cp -f "${recoveryFiles}/jamf"  "${jamfBinary}"
         /bin/ln -s "${jamfBinary}" /usr/local/bin
         checkBinaryPermissions
-        /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  Restored Binary"
+        repairPerformed "Performed:  Restored Binary"
     else
         writeToLog "  -> WARNING:  Unable to locate the Jamf Binary in the Recovery Files!"
         exitProcess "Missing Recovery Jamf Binary" 3
@@ -211,13 +225,13 @@ restoreJamfBinary() {
 manage() {
     if [[ $maxManageAttempts -gt $manageAttempts ]]; then
         writeToLog "  -> NOTICE: Enabling the Management Framework"
-        jss_url=$( /usr/bin/defaults read "${recoveryFiles}/${plistdomain}.jra.plist" jss_url )
-        verifySSLCert=$( /usr/bin/defaults read "${recoveryFiles}/${plistdomain}.jra.plist" verifySSLCert )
+        jss_url=$( defaultsCMD read jss_url )
+        verifySSLCert=$( defaultsCMD read verifySSLCert )
 
         "${jamfBinary}" createConf -url "${jss_url}" -verifySSLCert "${verifySSLCert}"
         /bin/cp -f "${recoveryFiles}/JAMF.keychain" "/Library/Application Support/JAMF/"
         "${jamfBinary}" manage #? -forceMdmEnrollment
-        /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  jamf manage"
+        repairPerformed "Performed:  jamf manage"
         manageAttempts=$(( manageAttempts + 1 ))
     elif [[ $maxManageAttempts -eq $manageAttempts ]]; then
         reenroll
@@ -231,7 +245,7 @@ manage() {
 reenroll() {
     writeToLog "  -> NOTICE: Reenrolling into Jamf"
     "${jamfBinary}" enroll -invitation "${invitationID}" -noRecon -noPolicy -reenroll -archiveDeviceCertificate
-    /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" repair_performed "Performed:  jamf enroll"
+    repairPerformed "Performed:  jamf enroll"
 }
 
 # Run the 'jamf removeMdmProfile' command.
@@ -268,11 +282,27 @@ checkRecoveryFiles() {
 
     # Backup the Jamf Keychain and server configuration.
     /bin/cp -f "/Library/Application Support/JAMF/JAMF.keychain" "${recoveryFiles}"
-    jss_url=$( /usr/bin/defaults read "/Library/Preferences/com.jamfsoftware.jamf" jss_url )
-    verifySSLCert=$( /usr/bin/defaults read "/Library/Preferences/com.jamfsoftware.jamf" verifySSLCert )
-    /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" jss_url "${jss_url}"
-    /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" verifySSLCert "${verifySSLCert}"
-    /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" latest_JamfBinaryVersion "${jamfBinaryVersion}"
+    jss_url=$( defaultsCMD read "/Library/Preferences/com.jamfsoftware.jamf" jss_url )
+    verifySSLCert=$( defaultsCMD read "/Library/Preferences/com.jamfsoftware.jamf" verifySSLCert )
+    defaultsCMD write jss_url "${jss_url}"
+    defaultsCMD write verifySSLCert "${verifySSLCert}"
+    defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
+}
+
+repairPerformed() {
+    timeStamp=$( /bin/date +%Y-%m-%d\ %H:%M:%S )
+    previousTotal=$( defaultsCMD read $1 )
+
+    if [[ $? == 0 ]]; then
+        newTotal=$((previousTotal + 1))
+    else
+        newTotal=1
+    fi
+
+    writeToLog "A { ${1} } repair was performed for the ${newTotal} time."
+    defaultsCMD write $1 $newTotal
+    repairPerformed "Performed:  ${1} (${newTotal})"
+    defaultsCMD write repair_date "${timeStamp}"
 }
 
 ##################################################
@@ -294,7 +324,7 @@ done
 
 # Run through the functions...
 checkNetwork
-	checkJamfWebService
+    checkJamfWebService
         checkBinaryStatus
             checkBinaryConnection
                 enrolledHealthCheck
