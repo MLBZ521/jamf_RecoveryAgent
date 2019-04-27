@@ -3,7 +3,13 @@ jamf_RecoveryAgent
 
 A LaunchDaemon that monitors the health of the Jamf Management Framework.
 
-**New:**  Added support to remove the JRA for situations where the device needs to be legitimately unmanaged and will not be wiped.  `setup_JamfRecoveryAgent.sh` expects either `Install` or `Uninstall` passed via Script Parameter 1.
+
+**Change Log:**  
+  * `jamf_RecoveryAgent.sh`
+    * v1.1.0 = Added support to report a repair action was taken
+    * v1.2.0 = Added logic to track how many repairs are performed for each repair action
+  * `build_JamfRecoveryAgent.sh`
+    * v1.1.0 = Added support to remove the JRA for situations where the device needs to be legitimately unmanaged and will not be wiped.  `setup_JamfRecoveryAgent.sh` expects either `Install` or `Uninstall` passed via Script Parameter 1.
 
 ## Overview
 
@@ -21,7 +27,7 @@ I started to work on this project quite a while ago, but stopped after the relea
 
 Then Apple introduced the concept of "User Approved" MDM enrollment.  So, re-enrolling a device through a non-User Approved method, changes the status of the device in Jamf.  
 
-Which leads me to the difference between this project and similar projects.  My main desire is to *not* re-enroll a device that has an issue, but as a last resort, attempt a re-enroll.  This process will attempt to resolve any issues, before attempting a non-User Approved enrollment.  I figured a non-User Approved enrollment is better than no enrollment at all.
+Which leads me to the difference between this project and similar projects.  My main desire is to *not* re-enroll a device that has an issue; a re-enroll is attempted as a last resort repair.  This process will attempt to resolve any issues, before attempting a non-User Approved enrollment.  I figured a non-User Approved enrollment is better than no enrollment at all.
 
 Obviously this process is not fool proof, a smart user can remove it.
 
