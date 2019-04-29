@@ -39,7 +39,7 @@ case $action in
 ###################################################################################################
 # Script Name:  jamf_RecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/14/2019
-# Version:  1.2.0 / Updated:  4/26/2019 / By:  ZT
+# Version:  1.3.0 / Updated:  4/29/2019 / By:  ZT
 #
 # Description:  This script checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
 #
@@ -175,7 +175,7 @@ checkBinaryConnection() {
         writeToLog "  -> Success"
     else
         writeToLog "  -> Failed"
-        manage
+        manage "Failed checkJSSConnection"
     fi
 }
 
@@ -189,7 +189,7 @@ enrolledHealthCheck() {
              writeToLog "  -> True"
         else
             writeToLog "  -> WARNING:  MDM Profile is missing!"
-            manage
+            manage "Missing MDM Profile"
     fi
 
     # Does system contain the JPS Root CA?
@@ -201,7 +201,7 @@ enrolledHealthCheck() {
     else
         writeToLog "  -> WARNING:  Root CA is missing!"
         "${jamfBinary}" trustJSS
-        repairPerformed "Performed:  jamf trustJSS"
+        repairPerformed "jamf trustJSS"
     fi
 }
 
@@ -214,7 +214,7 @@ checkValidationPolicy () {
         writeToLog "  -> Success"
     else
         writeToLog "  -> WARNING:  Unable to execute Policy!"
-        manage
+        manage "Failed Validation Policy"
         # After attempting to recover, try executing again.
         checkValidationPolicy
     fi
@@ -236,7 +236,7 @@ checkBinaryPermissions() {
         /usr/bin/chflags nouchg "${jamfBinary}"
         /usr/sbin/chown 0:0 "${jamfBinary}"
         /bin/chmod 555 "${jamfBinary}"
-        repairPerformed "Performed:  Reset Permissions"
+        repairPerformed "Reset Permissions"
     fi
 }
 
@@ -250,7 +250,7 @@ restoreJamfBinary() {
         /bin/cp -f "${recoveryFiles}/jamf"  "${jamfBinary}"
         /bin/ln -s "${jamfBinary}" /usr/local/bin
         checkBinaryPermissions
-        repairPerformed "Performed:  Restored Binary"
+        repairPerformed "Restored Binary"
     else
         writeToLog "  -> WARNING:  Unable to locate the Jamf Binary in the Recovery Files!"
         exitProcess "Missing Recovery Jamf Binary" 3
@@ -267,10 +267,10 @@ manage() {
         "${jamfBinary}" createConf -url "${jss_url}" -verifySSLCert "${verifySSLCert}"
         /bin/cp -f "${recoveryFiles}/JAMF.keychain" "/Library/Application Support/JAMF/"
         "${jamfBinary}" manage #? -forceMdmEnrollment
-        repairPerformed "Performed:  jamf manage"
+        repairPerformed "jamf manage" " / ${1}"
         manageAttempts=$(( manageAttempts + 1 ))
     elif [[ $maxManageAttempts -eq $manageAttempts ]]; then
-        reenroll
+        reenroll "${1}"
         manageAttempts=$(( manageAttempts + 1 ))
     else
         exitProcess "Unable to repair" 4
@@ -281,7 +281,7 @@ manage() {
 reenroll() {
     writeToLog "  -> NOTICE: Reenrolling into Jamf"
     "${jamfBinary}" enroll -invitation "${invitationID}" -noRecon -noPolicy -reenroll -archiveDeviceCertificate
-    repairPerformed "Performed:  jamf enroll"
+     repairPerformed "jamf enroll" " / ${1}"
 }
 
 # Run the 'jamf removeMdmProfile' command.
@@ -337,7 +337,7 @@ repairPerformed() {
 
     writeToLog "A { ${1} } repair was performed for the ${newTotal} time."
     defaultsCMD write $1 $newTotal
-    repairPerformed "Performed:  ${1} (${newTotal})"
+    repairPerformed "Performed:  ${1} (${newTotal})${2}"
     defaultsCMD write repair_date "${timeStamp}"
 }
 
@@ -348,7 +348,7 @@ writeToLog "*****  jamf_RecoveryAgent Process:  START  *****"
 
 # Verify client is not currently enrolling.
 while true
-jamfEnrollStatus=$( /bin/ps aux | /usr/bin/grep "[j]amf enroll" | /usr/bin/wc -l )
+jamfEnrollStatus=$( /bin/ps aux | /usr/bin/grep -E "[j]amf enroll|[j]amf update" | /usr/bin/wc -l )
 do
     if [ "${jamfEnrollStatus}" -gt 0 ]; then
         writeToLog "Client is enrolling; waiting..."
