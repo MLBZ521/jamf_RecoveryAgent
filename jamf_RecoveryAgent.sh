@@ -3,7 +3,7 @@
 ###################################################################################################
 # Script Name:  jamf_RecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/14/2019
-# Version:  1.2.0 / Updated:  4/26/2019 / By:  ZT
+# Version:  1.2.1 / Updated:  4/29/2019 / By:  ZT
 #
 # Description:  This script checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
 #
@@ -165,7 +165,7 @@ enrolledHealthCheck() {
     else
         writeToLog "  -> WARNING:  Root CA is missing!"
         "${jamfBinary}" trustJSS
-        repairPerformed "Performed:  jamf trustJSS"
+        repairPerformed "jamf trustJSS"
     fi
 }
 
@@ -200,7 +200,7 @@ checkBinaryPermissions() {
         /usr/bin/chflags nouchg "${jamfBinary}"
         /usr/sbin/chown 0:0 "${jamfBinary}"
         /bin/chmod 555 "${jamfBinary}"
-        repairPerformed "Performed:  Reset Permissions"
+        repairPerformed "Reset Permissions"
     fi
 }
 
@@ -214,7 +214,7 @@ restoreJamfBinary() {
         /bin/cp -f "${recoveryFiles}/jamf"  "${jamfBinary}"
         /bin/ln -s "${jamfBinary}" /usr/local/bin
         checkBinaryPermissions
-        repairPerformed "Performed:  Restored Binary"
+        repairPerformed "Restored Binary"
     else
         writeToLog "  -> WARNING:  Unable to locate the Jamf Binary in the Recovery Files!"
         exitProcess "Missing Recovery Jamf Binary" 3
@@ -231,7 +231,7 @@ manage() {
         "${jamfBinary}" createConf -url "${jss_url}" -verifySSLCert "${verifySSLCert}"
         /bin/cp -f "${recoveryFiles}/JAMF.keychain" "/Library/Application Support/JAMF/"
         "${jamfBinary}" manage #? -forceMdmEnrollment
-        repairPerformed "Performed:  jamf manage"
+        repairPerformed "jamf manage"
         manageAttempts=$(( manageAttempts + 1 ))
     elif [[ $maxManageAttempts -eq $manageAttempts ]]; then
         reenroll
@@ -245,7 +245,7 @@ manage() {
 reenroll() {
     writeToLog "  -> NOTICE: Reenrolling into Jamf"
     "${jamfBinary}" enroll -invitation "${invitationID}" -noRecon -noPolicy -reenroll -archiveDeviceCertificate
-    repairPerformed "Performed:  jamf enroll"
+    repairPerformed "jamf enroll"
 }
 
 # Run the 'jamf removeMdmProfile' command.
