@@ -8,6 +8,7 @@ A LaunchDaemon that monitors the health of the Jamf Management Framework.
   * `jamf_RecoveryAgent.sh`
     * v1.1.0 = Added support to report a repair action was taken
     * v1.2.0 = Added logic to track how many repairs are performed for each repair action
+    * v1.3.0 = Added additional verbosity to identify which step triggered a manage and reenroll repair action (This would be recorded in the plist for the EA to report); Checking if an update to the Jamf binary is being performed and waiting for that to complete before running
   * `build_JamfRecoveryAgent.sh`
     * v1.1.0 = Added support to remove the JRA for situations where the device needs to be legitimately unmanaged and will not be wiped.  `setup_JamfRecoveryAgent.sh` expects either `Install` or `Uninstall` passed via Script Parameter 1.
 
@@ -47,7 +48,7 @@ And from `/Library/Preferences/com.jamfsoftware.jamf.plist` records:
   * jss_url
   * verifySSLCert
 
-With this information, a device can have the Jamf Management Framework and it's connection to the Jamf Pro Server restored.  It will also resolve other common issues that can cause issues to the Management Framework.
+With this information, a device can have the Jamf Management Framework and it's connection to the Jamf Pro Server restored.  It will also resolve other common symptoms that can cause issues to the Management Framework.
 
 A LaunchDaemon is configured to run every seven days or upon a change to the following locations:
   * /usr/local/bin/jamf
