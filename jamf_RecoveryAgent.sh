@@ -3,7 +3,7 @@
 ###################################################################################################
 # Script Name:  jamf_RecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/14/2019
-# Version:  1.3.1 / Updated:  4/30/2019 / By:  ZT
+# Version:  1.3.2 / Updated:  4/30/2019 / By:  ZT
 #
 # Description:  This script checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
 #
@@ -72,13 +72,13 @@ writeToLog() {
 defaultsCMD() {
     case $1 in
         "read" )
-            /usr/bin/defaults read "${recoveryFiles}/${plistdomain}.jra.plist" $2 2> /dev/null
+            /usr/bin/defaults read "${recoveryFiles}/${plistdomain}.jra.plist" "${2}" 2> /dev/null
         ;;
         "write" )
-            /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" $2 "${3}" 2> /dev/null
+            /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" "${2}" "${3}" 2> /dev/null
         ;;
         "delete" )
-            /usr/bin/defaults delete "${recoveryFiles}/${plistdomain}.jra.plist" $2 2> /dev/null
+            /usr/bin/defaults delete "${recoveryFiles}/${plistdomain}.jra.plist" "${2}" 2> /dev/null
         ;;
     esac
 }
@@ -274,19 +274,26 @@ checkRecoveryFiles() {
         else
             writeToLog "  -> Updating recovery Jamf Binary"
             /bin/cp -f "${jamfBinary}" "${recoveryFiles}"
+            defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
         fi
     else
         writeToLog "  -> Creating a recovery Jamf Binary"
         /bin/cp -f "${jamfBinary}" "${recoveryFiles}"
+        defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
     fi
 
     # Backup the Jamf Keychain and server configuration.
     /bin/cp -f "/Library/Application Support/JAMF/JAMF.keychain" "${recoveryFiles}"
-    jss_url=$( defaultsCMD read "/Library/Preferences/com.jamfsoftware.jamf" jss_url )
-    verifySSLCert=$( defaultsCMD read "/Library/Preferences/com.jamfsoftware.jamf" verifySSLCert )
-    defaultsCMD write jss_url "${jss_url}"
-    defaultsCMD write verifySSLCert "${verifySSLCert}"
-    defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
+
+    jss_url=$( /usr/bin/defaults read "/Library/Preferences/com.jamfsoftware.jamf" jss_url 2> /dev/null )
+    if [[ $? == 0 ]]; then
+        defaultsCMD write jss_url "${jss_url}"
+    fi
+
+    verifySSLCert=$( /usr/bin/defaults read "/Library/Preferences/com.jamfsoftware.jamf" verifySSLCert 2> /dev/null )
+    if [[ $? == 0 ]]; then
+        defaultsCMD write verifySSLCert "${verifySSLCert}"
+    fi
 }
 
 repairPerformed() {
