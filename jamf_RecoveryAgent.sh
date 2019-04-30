@@ -3,7 +3,7 @@
 ###################################################################################################
 # Script Name:  jamf_RecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/14/2019
-# Version:  1.3.0 / Updated:  4/29/2019 / By:  ZT
+# Version:  1.3.1 / Updated:  4/30/2019 / By:  ZT
 #
 # Description:  This script checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
 #
@@ -139,7 +139,7 @@ checkBinaryConnection() {
         writeToLog "  -> Success"
     else
         writeToLog "  -> Failed"
-        manage "Failed checkJSSConnection"
+        manage " / Failed checkJSSConnection"
     fi
 }
 
@@ -153,7 +153,7 @@ enrolledHealthCheck() {
              writeToLog "  -> True"
         else
             writeToLog "  -> WARNING:  MDM Profile is missing!"
-            manage "Missing MDM Profile"
+            manage " / Missing MDM Profile"
     fi
 
     # Does system contain the JPS Root CA?
@@ -178,7 +178,7 @@ checkValidationPolicy () {
         writeToLog "  -> Success"
     else
         writeToLog "  -> WARNING:  Unable to execute Policy!"
-        manage "Failed Validation Policy"
+        manage " / Failed Validation Policy"
         # After attempting to recover, try executing again.
         checkValidationPolicy
     fi
@@ -291,7 +291,7 @@ checkRecoveryFiles() {
 
 repairPerformed() {
     timeStamp=$( /bin/date +%Y-%m-%d\ %H:%M:%S )
-    previousTotal=$( defaultsCMD read $1 )
+    previousTotal=$( defaultsCMD read "${1}" )
 
     if [[ $? == 0 ]]; then
         newTotal=$((previousTotal + 1))
@@ -300,8 +300,8 @@ repairPerformed() {
     fi
 
     writeToLog "A { ${1} } repair was performed for the ${newTotal} time."
-    defaultsCMD write $1 $newTotal
-    repairPerformed "Performed:  ${1} (${newTotal})${2}"
+    defaultsCMD write "${1}" $newTotal
+    defaultsCMD write repair_performed "Performed:  ${1} (${newTotal})${2}"
     defaultsCMD write repair_date "${timeStamp}"
 }
 
