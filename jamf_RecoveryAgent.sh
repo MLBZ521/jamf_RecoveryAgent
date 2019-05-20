@@ -3,9 +3,9 @@
 ###################################################################################################
 # Script Name:  jamf_RecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/14/2019
-# Version:  1.3.2 / Updated:  4/30/2019 / By:  ZT
+# Version:  1.4.0 / Updated:  5/20/2019 / By:  ZT
 #
-# Description:  This script checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
+# Description:  This script checks the Jaßmf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
 #
 # Inspired by several other projects and discussions on JamfNation:
 #    Rich Trouton/(derflounder)'s CasperCheck
@@ -24,6 +24,8 @@
 jamfURL="jps.company.com"
 # Enter the port number of your Jamf Pro Server; this is usually 8443 -- change if needed.
 jamfPort="8443"
+# Expected value for the verifySSLCert key
+expected_verifySSLCert="always"
 # Set the GUID for the MDM Enrollment Profile.
 mdmEnrollmentProfileID="00000000-0000-0000-A000-0A498DBD6646"
 # Set the name of the JPS Root CA certificate.
@@ -40,6 +42,8 @@ plistdomain="com.github.mlbz521"
 ##################################################
 # The below variables do not need to be modified.
 
+# Jamf Pro Server
+jpsURL="https://${jamfURL}:${jamfPort}/"
 # Set the location to write logging information for later viewing.
 logFile="/var/log/jamf_RecoveryAgent.log"
 # Set location of local recovery files.
@@ -59,7 +63,7 @@ else
 fi
 
 ##################################################
-# Setup Functions
+# Helper Functions
 
 # This function writes to the defined log.
 writeToLog() {
@@ -91,44 +95,24 @@ exitProcess() {
     exit $2
 }
 
-# Check for a valid IP address and can connect to the "outside world"; returns result.
-checkNetwork() {
-    writeToLog "Testing if the device has an active network interface..."
-    defaultInterfaceID=$( /sbin/route get default | /usr/bin/awk -F 'interface: ' '{print $2}' | /usr/bin/xargs )
-    linkStatus=$( /sbin/ifconfig "${defaultInterfaceID}" | /usr/bin/awk -F 'status: ' '{print $2}' | /usr/bin/xargs )
+repairPerformed() {
+    timeStamp=$( /bin/date +%Y-%m-%d\ %H:%M:%S )
+    previousTotal=$( defaultsCMD read "${1}" )
 
-    if [[ "${linkStatus}" == "active" ]]; then
-        writeToLog "  -> Active interface:  ${defaultInterfaceID}"
+    if [[ $? == 0 ]]; then
+        newTotal=$((previousTotal + 1))
     else
-        writeToLog "  -> Notice:  Device is offline"
-        exitProcess "Device is offline" 1
+        newTotal=1
     fi
+
+    writeToLog "A { ${1} } repair was performed for the ${newTotal} time."
+    defaultsCMD write "${1}" $newTotal
+    defaultsCMD write repair_performed "Performed:  ${1} (${newTotal})${2}"
+    defaultsCMD write repair_date "${timeStamp}"
 }
 
-# Verifies that the Jamf Pro Servers' Tomcat service is responding via its assigned port; returns result.
-checkJamfWebService() {
-    writeToLog "Testing if the Jamf web service available..."
-    webService=$( /usr/bin/nc -z -w 5 $jamfURL $jamfPort > /dev/null 2>&1; echo $? )
-
-    if [ "${webService}" -eq 0 ]; then
-        writeToLog "  -> Success"
-    else
-        writeToLog "  -> Failed"
-        exitProcess "JPS Web Service Unavailable" 2
-    fi
-}
-
-# Checking that the Jamf binary exists; returns result.
-checkBinaryStatus() {
-    writeToLog "Testing the Jamf Binary..."
-
-    if [[ -e "${jamfBinary}" ]]; then
-        checkBinaryPermissions
-    else
-        writeToLog "  -> WARNING:  Unable to locate the Jamf Binary!"
-        restoreJamfBinary
-    fi
-}
+##################################################
+# Logic Functions
 
 # Verifies that the Jamf binary can successfully communicate with the Jamf Pro Server; returns result.
 checkBinaryConnection() {
@@ -139,48 +123,7 @@ checkBinaryConnection() {
         writeToLog "  -> Success"
     else
         writeToLog "  -> Failed"
-        manage " / Failed checkJSSConnection"
-    fi
-}
-
-# Checks the 'health' of the Jamf Management Framework
-enrolledHealthCheck() {
-    # Does system contain the MDM Enrollment Profile?
-    writeToLog "Checking if the MDM Profile is installed..."
-    mdmProfilePresent=$( /usr/bin/profiles $profilesCMD | /usr/bin/grep "${mdmEnrollmentProfileID}" )
-
-    if [[ "${mdmProfilePresent}" != "" ]]; then
-             writeToLog "  -> True"
-        else
-            writeToLog "  -> WARNING:  MDM Profile is missing!"
-            manage " / Missing MDM Profile"
-    fi
-
-    # Does system contain the JPS Root CA?
-    writeToLog "Checking if the JPS Root CA is installed..."
-    jpsRootCAPresent=$( /usr/bin/security find-certificate -Z -c "${jpsRootCA}" | /usr/bin/awk -F 'SHA-1 hash: ' '{print $2}' | /usr/bin/xargs )
-
-    if [[ "${jpsRootCAPresent}" == "${jpsRootCASHA1}" ]]; then
-        writeToLog "  -> True"
-    else
-        writeToLog "  -> WARNING:  Root CA is missing!"
-        "${jamfBinary}" trustJSS
-        repairPerformed "jamf trustJSS"
-    fi
-}
-
-# Running a manual policy trigger to check jamf binary functionality; returns result.
-checkValidationPolicy () {
-    writeToLog "Testing if device can run a Policy..."
-    checkPolicy=$( "${jamfBinary}" policy -event $testTrigger | /usr/bin/grep "Policy Execution Successful!" )
-
-    if [[ -n "${checkPolicy}" ]]; then
-        writeToLog "  -> Success"
-    else
-        writeToLog "  -> WARNING:  Unable to execute Policy!"
-        manage " / Failed Validation Policy"
-        # After attempting to recover, try executing again.
-        checkValidationPolicy
+        exitProcess "Binary cannot communicate with JPS" 3
     fi
 }
 
@@ -195,29 +138,54 @@ checkBinaryPermissions() {
          writeToLog "  -> Proper permissions set"
     else
         writeToLog "  -> WARNING:  Improper permissions found!"
-        writeToLog "    -> Setting proper permissions..."
+        writeToLog "    -> Currently they are:  ${currentPermissions} ${currentOwner}"
+        writeToLog "      -> Setting proper permissions..."
         /usr/bin/chflags noschg "${jamfBinary}"
         /usr/bin/chflags nouchg "${jamfBinary}"
-        /usr/sbin/chown 0:0 "${jamfBinary}"
+        /usr/sbin/chown root:wheel "${jamfBinary}"
         /bin/chmod 555 "${jamfBinary}"
         repairPerformed "Reset Permissions"
     fi
 }
 
-# Restore the Jamf Binary from the Recovery Files.
+# Restore the Jamf Binary.
 restoreJamfBinary() {
-    # Verify the Recovery Binary exists.
-    if [[ -e "${recoveryFiles}/jamf" ]]; then
-        writeToLog "  -> NOTICE:  Restoring the Jamf Binary!"
-        /bin/mkdir -p /usr/local/jamf/bin
-        /bin/mkdir -p /usr/local/bin
-        /bin/cp -f "${recoveryFiles}/jamf"  "${jamfBinary}"
-        /bin/ln -s "${jamfBinary}" /usr/local/bin
-        checkBinaryPermissions
-        repairPerformed "Restored Binary"
-    else
+    writeToLog "  -> NOTICE:  Restoring the Jamf Binary!"
+
+    # Check if the Recovery Binary exists and restore it if not.
+    if [[ ! -e "${recoveryFiles}/jamf" ]]; then
         writeToLog "  -> WARNING:  Unable to locate the Jamf Binary in the Recovery Files!"
-        exitProcess "Missing Recovery Jamf Binary" 3
+        writeToLog "    -> Downloading binary from the JPS..."
+        curlReturn="$(/usr/bin/curl --silent --show-error --fail --write-out "statusCode:%{http_code}" --output "${recoveryFiles}/jamf" --request GET "${jpsURL}bin/jamf")"
+        curlCode=$(echo "$curlReturn" | /usr/bin/awk -F statusCode: '{print $2}')
+    	if [[ $curlCode != "200" ]]; then
+            writeToLog "  -> ERROR:  Failed to restore the Jamf Binary!"
+            exitProcess "Missing Recovery Jamf Binary" 4
+	    fi
+    fi
+
+    # Create the directory structure and ensure the proper permisssions are set.
+    /bin/mkdir -p /usr/local/jamf/bin /usr/local/bin
+    /bin/cp -f "${recoveryFiles}/jamf"  "${jamfBinary}"
+    /bin/ln -s "${jamfBinary}" /usr/local/bin
+    checkBinaryPermissions
+    repairPerformed "Restored Binary"
+}
+
+# Running a manual policy trigger to check jamf binary functionality; returns result.
+checkValidationPolicy () {
+    writeToLog "Testing if device can run a Policy..."
+    checkPolicy=$( "${jamfBinary}" policy -event $testTrigger )
+    checkPolicyResults=$( echo "${checkPolicy}" | /usr/bin/grep "Policy Execution Successful!" )
+
+    if [[ -n "${checkPolicyResults}" ]]; then
+        writeToLog "  -> Success"
+    else
+        writeToLog "  -> WARNING:  Unable to execute Policy!"
+        manage " / Failed Validation Policy"
+        
+        # After attempting to recover, try executing again.
+        checkValidationPolicy
     fi
 }
 
@@ -225,19 +193,19 @@ restoreJamfBinary() {
 manage() {
     if [[ $maxManageAttempts -gt $manageAttempts ]]; then
         writeToLog "  -> NOTICE: Enabling the Management Framework"
-        jss_url=$( defaultsCMD read jss_url )
-        verifySSLCert=$( defaultsCMD read verifySSLCert )
 
-        "${jamfBinary}" createConf -url "${jss_url}" -verifySSLCert "${verifySSLCert}"
-        /bin/cp -f "${recoveryFiles}/JAMF.keychain" "/Library/Application Support/JAMF/"
+        # Create the /Library/Preferences/com.jamfsoftware.jamf plist if it doesn't exist and set the proper values
+        "${jamfBinary}" createConf -url "${jpsURL}" -verifySSLCert "${expected_verifySSLCert}"
+
         "${jamfBinary}" manage #? -forceMdmEnrollment
         repairPerformed "jamf manage" " / ${1}"
         manageAttempts=$(( manageAttempts + 1 ))
+
     elif [[ $maxManageAttempts -eq $manageAttempts ]]; then
         reenroll "${1}"
         manageAttempts=$(( manageAttempts + 1 ))
     else
-        exitProcess "Unable to repair" 4
+        exitProcess "Unable to repair" 5
     fi
 }
 
@@ -260,58 +228,6 @@ removeFramework() {
     "${jamfBinary}" removeFramework #? -keepMDM
 }
 
-# Sets up and maintains the Recovery Files.
-checkRecoveryFiles() {
-    writeToLog "Updating the Recovery Files..."
-
-    if [[ -e "${recoveryFiles}/jamf" ]]; then
-        jamfBinaryVersion=$( "${jamfBinary}" version | /usr/bin/awk -F 'version=' '{print $2}' | /usr/bin/xargs )
-        jamfRecoveryBinaryVersion=$( "${recoveryFiles}/jamf" version | /usr/bin/awk -F 'version=' '{print $2}' | /usr/bin/xargs )
-
-        # Compares the current version and updates there is a newer binary available.
-        if [[ "${jamfBinaryVersion}" == "${jamfRecoveryBinaryVersion}" ]]; then
-            writeToLog "  -> Current"
-        else
-            writeToLog "  -> Updating recovery Jamf Binary"
-            /bin/cp -f "${jamfBinary}" "${recoveryFiles}"
-            defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
-        fi
-    else
-        writeToLog "  -> Creating a recovery Jamf Binary"
-        /bin/cp -f "${jamfBinary}" "${recoveryFiles}"
-        defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
-    fi
-
-    # Backup the Jamf Keychain and server configuration.
-    /bin/cp -f "/Library/Application Support/JAMF/JAMF.keychain" "${recoveryFiles}"
-
-    jss_url=$( /usr/bin/defaults read "/Library/Preferences/com.jamfsoftware.jamf" jss_url 2> /dev/null )
-    if [[ $? == 0 ]]; then
-        defaultsCMD write jss_url "${jss_url}"
-    fi
-
-    verifySSLCert=$( /usr/bin/defaults read "/Library/Preferences/com.jamfsoftware.jamf" verifySSLCert 2> /dev/null )
-    if [[ $? == 0 ]]; then
-        defaultsCMD write verifySSLCert "${verifySSLCert}"
-    fi
-}
-
-repairPerformed() {
-    timeStamp=$( /bin/date +%Y-%m-%d\ %H:%M:%S )
-    previousTotal=$( defaultsCMD read "${1}" )
-
-    if [[ $? == 0 ]]; then
-        newTotal=$((previousTotal + 1))
-    else
-        newTotal=1
-    fi
-
-    writeToLog "A { ${1} } repair was performed for the ${newTotal} time."
-    defaultsCMD write "${1}" $newTotal
-    defaultsCMD write repair_performed "Performed:  ${1} (${newTotal})${2}"
-    defaultsCMD write repair_date "${timeStamp}"
-}
-
 ##################################################
 # Bits staged...
 
@@ -322,20 +238,135 @@ while true
 jamfEnrollStatus=$( /bin/ps aux | /usr/bin/grep -E "[j]amf enroll|[j]amf update" | /usr/bin/wc -l )
 do
     if [ "${jamfEnrollStatus}" -gt 0 ]; then
-        writeToLog "Client is enrolling; waiting..."
+        writeToLog "Conflicting prcoess is running; waiting..."
         /bin/sleep 5
     else
         break
     fi
 done
 
-# Run through the functions...
-checkNetwork
-    checkJamfWebService
-        checkBinaryStatus
-            checkBinaryConnection
-                enrolledHealthCheck
-                    checkValidationPolicy
-                        checkRecoveryFiles
+# Check for a valid IP address and can connect to the "outside world"; returns result.
+writeToLog "Testing if the device has an active network interface..."
+defaultInterfaceID=$( /sbin/route get default | /usr/bin/awk -F 'interface: ' '{print $2}' | /usr/bin/xargs )
+linkStatus=$( /sbin/ifconfig "${defaultInterfaceID}" | /usr/bin/awk -F 'status: ' '{print $2}' | /usr/bin/xargs )
+
+if [[ "${linkStatus}" == "active" ]]; then
+    writeToLog "  -> Active interface:  ${defaultInterfaceID}"
+else
+    writeToLog "  -> Notice:  Device is offline"
+    exitProcess "Device is offline" 1
+fi
+
+# Verifies that the Jamf Pro Servers' Tomcat service is responding via its assigned port; returns result.
+writeToLog "Testing if the Jamf web service available..."
+webService=$( /usr/bin/nc -z -w 5 $jamfURL $jamfPort > /dev/null 2>&1; echo $? )
+
+if [ "${webService}" -eq 0 ]; then
+    writeToLog "  -> Success"
+else
+    writeToLog "  -> Failed"
+    exitProcess "JPS Web Service Unavailable" 2
+fi
+
+# Verify the Binary exists first.
+writeToLog "Testing the Jamf Binary..."
+
+if [[ -e "${jamfBinary}" ]]; then
+    checkBinaryPermissions
+else
+    writeToLog "  -> WARNING:  Unable to locate the Jamf Binary!"
+    restoreJamfBinary
+fi
+
+# Check the 'health' of the Jamf Management Framework.
+writeToLog "Checking the health of the management framework..."
+
+# Does the Jamf Application Support folder exists?
+if [[ ! -e "/Library/Application Support/JAMF" ]]; then
+    writeToLog "  -> WARNING:  The Jamf Application Support folder is missing!"
+    reenroll " / Missing Application Support"
+fi
+
+# Does the JAMF.keychain exists?
+writeToLog "Checking if the Jamf Keychain exists..."
+
+if [[ -e "/Library/Application Support/JAMF/JAMF.keychain" ]]; then
+    writeToLog "  -> True"
+elif [[ -e "${recoveryFiles}/JAMF.keychain" ]]; then
+    writeToLog "  -> WARNING:  Jamf Keychain is missing!"
+    /bin/cp -f "${recoveryFiles}/JAMF.keychain"  "/Library/Application Support/JAMF/JAMF.keychain"
+    repairPerformed "Restored Jamf Keychain"
+else
+    writeToLog "  -> WARNING:  Unable to locate the Jamf Keychain!"
+    reenroll "Missing Jamf Keychain"
+fi
+
+# Does the Jamf Software configuration exist and is it configured as expected?
+writeToLog "Checking the Jamf Configuration..."
+if [[ -e "/Library/Preferences/com.jamfsoftware.jamf.plist" ]]; then
+    jss_url=$( /usr/bin/defaults read "/Library/Preferences/com.jamfsoftware.jamf" jss_url )
+    
+    if [[ "${jss_url}" == "${jpsURL}" ]]; then
+        checkBinaryConnection
+    else
+        writeToLog "  -> WARNING:  Unexpected JPS URL Specified!"
+        /usr/bin/defaults write "/Library/Preferences/com.jamfsoftware.jamf" "${jpsURL}"
+        repairPerformed "Set JPS Server"
+    fi
+else
+    writeToLog "  -> WARNING:  Jamf configuration is missing!"
+    "${jamfBinary}" createConf -url "${jpsURL}" -verifySSLCert "${expected_verifySSLCert}"
+    repairPerformed "Restored Jamf Config"
+fi
+
+# Does system contain the JPS Root CA?
+writeToLog "Checking if the JPS Root CA is installed..."
+jpsRootCAPresent=$( /usr/bin/security find-certificate -Z -c "${jpsRootCA}" | /usr/bin/awk -F 'SHA-1 hash: ' '{print $2}' | /usr/bin/xargs )
+
+if [[ "${jpsRootCAPresent}" == "${jpsRootCASHA1}" ]]; then
+    writeToLog "  -> True"
+else
+    writeToLog "  -> WARNING:  Root CA is missing!"
+    "${jamfBinary}" trustJSS
+    repairPerformed "jamf trustJSS"
+fi
+
+# Does system contain the MDM Enrollment Profile?
+writeToLog "Checking if the MDM Profile is installed..."
+mdmProfilePresent=$( /usr/bin/profiles $profilesCMD | /usr/bin/grep "${mdmEnrollmentProfileID}" )
+
+if [[ "${mdmProfilePresent}" != "" ]]; then
+            writeToLog "  -> True"
+    else
+        writeToLog "  -> WARNING:  MDM Profile is missing!"
+        manage " / Missing MDM Profile"
+fi
+
+# Run the checkValidationPolicy Function
+checkValidationPolicy
+
+# Update local recovery files.
+writeToLog "Updating the Recovery Files..."
+
+if [[ -e "${recoveryFiles}/jamf" ]]; then
+    jamfBinaryVersion=$( "${jamfBinary}" version | /usr/bin/awk -F 'version=' '{print $2}' | /usr/bin/xargs )
+    jamfRecoveryBinaryVersion=$( "${recoveryFiles}/jamf" version | /usr/bin/awk -F 'version=' '{print $2}' | /usr/bin/xargs )
+
+    # Compares the current version and updates if there is a newer binary available.
+    if [[ "${jamfBinaryVersion}" == "${jamfRecoveryBinaryVersion}" ]]; then
+        writeToLog "  -> Current"
+    else
+        writeToLog "  -> Updating recovery Jamf Binary"
+        /bin/cp -f "${jamfBinary}" "${recoveryFiles}"
+        defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
+    fi
+else
+    writeToLog "  -> Creating a recovery Jamf Binary"
+    /bin/cp -f "${jamfBinary}" "${recoveryFiles}"
+    defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
+fi
+
+# Backup the Jamf Keychain and server configuration.
+/bin/cp -f "/Library/Application Support/JAMF/JAMF.keychain" "${recoveryFiles}"
 
 exitProcess "Enabled" 0
