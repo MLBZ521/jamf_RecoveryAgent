@@ -3,9 +3,9 @@
 ###################################################################################################
 # Script Name:  jamf_RecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/14/2019
-# Version:  1.4.0 / Updated:  5/20/2019 / By:  ZT
+# Version:  1.4.0a / Updated:  5/22/2019 / By:  ZT
 #
-# Description:  This script checks the Jaßmf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
+# Description:  This script checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
 #
 # Inspired by several other projects and discussions on JamfNation:
 #    Rich Trouton/(derflounder)'s CasperCheck
@@ -17,31 +17,64 @@
 #
 ###################################################################################################
 
+echo "*****  jamf_RecoveryAgent process:  START  *****"
+
+##################################################
+# Script Parameters
+
+# Install or uninstall the agent
+action="${4}"
+# Enter the Jamf Pro Server FQDN
+jamfURL="${6}" # "jps.company.com"
+# verifySSLCert Key
+expected_verifySSLCert="${7}" # "always"
+# JPS Root CA Certificate Common Name
+jpsRootCA="${8}" # "Organization's JSS Built-in Certificate Authority"
+# JPS Root CA Certificate SHA-1 Hash
+jpsRootCASHA1="${9}" # "3FE77342FC69A07EEEA0C014AAC5BDBC6AE6FCFB"
+# Invitation ID
+invitationID="${10}" # "239475012374912374023478123402092374091"
+# Custom Trigger for Test Policy
+testTrigger="${11}" # "checkJRA"
+
+##################################################
+
+case $action in
+
+    "Install" )
+        echo "** Installing the Jamf Recovery Agent **"
+
+        if [[ ! -e "/etc/weekly.local" ]]; then
+            echo "Creating the weekly.local periodic directory..."
+            /bin/mkdir "/etc/weekly.local"
+            /bin/chown root:wheel "/etc/weekly.local"
+            /bin/chmod 755 "/etc/weekly.local"
+        fi
+
+        /bin/cat > "/etc/weekly.local/100.weekly.jra" <<'EOF'
+#!/bin/bash
+
 ##################################################
 # Define Variables
+EOF
 
-# Enter the FQDN of your Jamf Pro Server.
-jamfURL="jps.company.com"
-# Enter the port number of your Jamf Pro Server; this is usually 8443 -- change if needed.
-jamfPort="8443"
-# Expected value for the verifySSLCert key
-expected_verifySSLCert="always"
-# Set the GUID for the MDM Enrollment Profile.
-mdmEnrollmentProfileID="00000000-0000-0000-A000-0A498DBD6646"
-# Set the name of the JPS Root CA certificate.
-jpsRootCA="Organization's JSS Built-in Certificate Authority"
-# Set the SHA-1 hash of the JPS Root CA certificate.
-jpsRootCASHA1="3FE77342FC69A07EEEA0C014AAC5BDBC6AE6FCFB"
-# Set the Invintation ID.
-invitationID="239475012374912374023478123402092374091"
-# Set the custom trigger used to test Policies.
-testTrigger="checkJRA"
-# Set a custom plist domain.
-plistdomain="com.github.mlbz521"
+        # Insert code
+        echo "jamfURL=\"${jamfURL}\"" >> "/etc/weekly.local/100.weekly.jra"
+        echo "expected_verifySSLCert=\"${expected_verifySSLCert}\"" >> "/etc/weekly.local/100.weekly.jra"
+        echo "jpsRootCA=\"${jpsRootCA}\"" >> "/etc/weekly.local/100.weekly.jra"
+        echo "jpsRootCASHA1=\"${jpsRootCASHA1}\"" >> "/etc/weekly.local/100.weekly.jra"
+        echo "invitationID=\"${invitationID}\"" >> "/etc/weekly.local/100.weekly.jra"
+        echo "testTrigger=\"${testTrigger}\"" >> "/etc/weekly.local/100.weekly.jra"
+
+        /bin/cat > "/etc/weekly.local" <<'EOF'
 
 ##################################################
-# The below variables do not need to be modified.
+# Only modify the below variables if needed.
 
+# Enter the port number of your Jamf Pro Server; this is usually 8443 -- change if needed.
+jamfPort="8443"
+# Set the GUID for the MDM Enrollment Profile.
+mdmEnrollmentProfileID="00000000-0000-0000-A000-4A414D460003"
 # Jamf Pro Server
 jpsURL="https://${jamfURL}:${jamfPort}/"
 # Set the location to write logging information for later viewing.
@@ -73,16 +106,16 @@ writeToLog() {
 }
 
 # This is a helper function to interact with the JRA plist.
-defaultsCMD() {
+defaultsJRA() {
     case $1 in
         "read" )
-            /usr/bin/defaults read "${recoveryFiles}/${plistdomain}.jra.plist" "${2}" 2> /dev/null
+            /usr/bin/defaults read "${recoveryFiles}/jra.plist" "${2}" 2> /dev/null
         ;;
         "write" )
-            /usr/bin/defaults write "${recoveryFiles}/${plistdomain}.jra.plist" "${2}" "${3}" 2> /dev/null
+            /usr/bin/defaults write "${recoveryFiles}/jra.plist" "${2}" "${3}" 2> /dev/null
         ;;
         "delete" )
-            /usr/bin/defaults delete "${recoveryFiles}/${plistdomain}.jra.plist" "${2}" 2> /dev/null
+            /usr/bin/defaults delete "${recoveryFiles}/jra.plist" "${2}" 2> /dev/null
         ;;
     esac
 }
@@ -90,14 +123,14 @@ defaultsCMD() {
 # This function handles the exit process of the script.
 exitProcess() {
     writeToLog "Result: ${1}"
-    defaultsCMD write last_Result "${1}"
+    defaultsJRA write last_Result "${1}"
     writeToLog "*****  jamf_RecoveryAgent Process:  COMPLETE  *****"
     exit $2
 }
 
 repairPerformed() {
     timeStamp=$( /bin/date +%Y-%m-%d\ %H:%M:%S )
-    previousTotal=$( defaultsCMD read "${1}" )
+    previousTotal=$( defaultsJRA read "${1}" )
 
     if [[ $? == 0 ]]; then
         newTotal=$((previousTotal + 1))
@@ -106,9 +139,9 @@ repairPerformed() {
     fi
 
     writeToLog "A { ${1} } repair was performed for the ${newTotal} time."
-    defaultsCMD write "${1}" $newTotal
-    defaultsCMD write repair_performed "Performed:  ${1} (${newTotal})${2}"
-    defaultsCMD write repair_date "${timeStamp}"
+    defaultsJRA write "${1}" $newTotal
+    defaultsJRA write repair_performed "Performed:  ${1} (${newTotal})${2}"
+    defaultsJRA write repair_date "${timeStamp}"
 }
 
 ##################################################
@@ -358,15 +391,39 @@ if [[ -e "${recoveryFiles}/jamf" ]]; then
     else
         writeToLog "  -> Updating recovery Jamf Binary"
         /bin/cp -f "${jamfBinary}" "${recoveryFiles}"
-        defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
+        defaultsJRA write latest_JamfBinaryVersion "${jamfBinaryVersion}"
     fi
 else
     writeToLog "  -> Creating a recovery Jamf Binary"
     /bin/cp -f "${jamfBinary}" "${recoveryFiles}"
-    defaultsCMD write latest_JamfBinaryVersion "${jamfBinaryVersion}"
+    defaultsJRA write latest_JamfBinaryVersion "${jamfBinaryVersion}"
 fi
 
 # Backup the Jamf Keychain and server configuration.
 /bin/cp -f "/Library/Application Support/JAMF/JAMF.keychain" "${recoveryFiles}"
 
 exitProcess "Enabled" 0
+EOF
+
+        # Verify the files exist...
+        if [[ -e "/etc/weekly.local/100.weekly.jra" ]]; then
+            echo "Setting permissions on the script..."
+            /bin/chown root:wheel "/etc/weekly.local/100.weekly.jra"
+            /bin/chmod 755 "/etc/weekly.local/100.weekly.jra"
+        else
+            echo "Jamf Recovery Agent not found!"
+            echo "*****  jamf_RecoveryAgent process:  FAILED  *****"
+            exit 1
+        fi
+
+    ;;
+
+    "Uninstall" )
+        echo "Uninstalling the Jamf Recovery Agent..."
+        /bin/rm -f "/etc/weekly.local/100.weekly.jra"
+    ;;
+
+esac
+
+echo "*****  jamf_RecoveryAgent process:  COMPLETE  *****"
+exit 0
