@@ -47,7 +47,7 @@ case $action in
         if [[ ! -e "/etc/weekly.local" ]]; then
             echo "Creating the weekly.local periodic directory..."
             /bin/mkdir "/etc/weekly.local"
-            /bin/chown root:wheel "/etc/weekly.local"
+            /usr/sbin/chown root:wheel "/etc/weekly.local"
             /bin/chmod 755 "/etc/weekly.local"
         fi
 
@@ -429,7 +429,7 @@ EOF
         # Verify the files exist...
         if [[ -e "/etc/weekly.local/100.weekly.jra" ]]; then
             echo "Setting permissions on the script..."
-            /bin/chown root:wheel "/etc/weekly.local/100.weekly.jra"
+            /usr/sbin/chown root:wheel "/etc/weekly.local/100.weekly.jra"
             /bin/chmod 755 "/etc/weekly.local/100.weekly.jra"
         else
             echo "Jamf Recovery Agent not found!"
