@@ -423,6 +423,40 @@ EOF
         /bin/rm -f "/etc/weekly.local/100.weekly.jra"
     ;;
 
+    "UninstallOld" )
+        launchDaemonLabel="edu.asu.RecoveryAgent"
+        launchDaemonLocation="/Library/LaunchDaemons/${launchDaemonLabel}.plist"
+        osVersion=$( /usr/bin/sw_vers -productVersion | /usr/bin/awk -F '.' '{print $2}' )
+
+        removeJRFiles() {
+            echo "Removing files..."
+            /bin/rm -f "${launchDaemonLocation}"
+            /bin/rm -rf "${recoveryFiles}"
+        }
+
+        echo "Uninstalling the old Jamf Recovery Agent..."
+        # Check if the LaunchDaemon is running.
+        # Determine proper launchctl syntax based on OS Version.
+        if [[ $osVersion -ge 11 ]]; then
+            exitCode1=$( /bin/launchctl print system/$launchDaemonLabel > /dev/null 2>&1; echo $? )
+
+            if [[ $exitCode1 == 0 ]]; then
+                echo "Stopping the JRA LaunchDaemon..."
+                /bin/launchctl bootout system/$launchDaemonLabel
+                removeJRFiles
+            fi
+
+        elif [[ $osVersion -le 10 ]]; then
+            exitCode1=$( /bin/launchctl list $launchDaemonLabel > /dev/null 2>&1; echo $? )
+
+            if [[ $exitCode1 == 0 ]]; then
+                echo "Stopping the JRA LaunchDaemon..."
+                /bin/launchctl unload "${launchDaemonLocation}"
+                removeJRFiles
+            fi
+        fi
+    ;;
+
 esac
 
 echo "*****  jamf_RecoveryAgent process:  COMPLETE  *****"
