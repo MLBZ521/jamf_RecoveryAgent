@@ -66,7 +66,7 @@ EOF
         echo "invitationID=\"${invitationID}\"" >> "/etc/weekly.local/100.weekly.jra"
         echo "testTrigger=\"${testTrigger}\"" >> "/etc/weekly.local/100.weekly.jra"
 
-        /bin/cat > "/etc/weekly.local" <<'EOF'
+        /bin/cat >> "/etc/weekly.local/100.weekly.jra" <<'EOF'
 
 ##################################################
 # Only modify the below variables if needed.
