@@ -81,8 +81,10 @@ jpsURL="https://${jamfURL}:${jamfPort}/"
 logFile="/var/log/jamf_RecoveryAgent.log"
 # Set location of local recovery files.
 recoveryFiles="/private/var/jra"
-# Get location of the Jamf Binary.
+# Location of the Jamf Binary.
 jamfBinary="/usr/local/jamf/bin/jamf"
+# Location of Jamf Keychain
+jamfKeychain="/Library/Application Support/JAMF/JAMF.keychain"
 # Set the number of jamf manage attempts.
 maxManageAttempts=1
 manageAttempts=0
@@ -168,7 +170,7 @@ checkBinaryPermissions() {
 
     # Verifying Permissions
     if [[ $currentPermissions == "555" && $currentOwner == "root:wheel" ]]; then
-         writeToLog "  -> Proper permissions set"
+        writeToLog "  -> Proper permissions set"
     else
         writeToLog "  -> WARNING:  Improper permissions found!"
         writeToLog "    -> Currently they are:  ${currentPermissions} ${currentOwner}"
@@ -177,7 +179,7 @@ checkBinaryPermissions() {
         /usr/bin/chflags nouchg "${jamfBinary}"
         /usr/sbin/chown root:wheel "${jamfBinary}"
         /bin/chmod 555 "${jamfBinary}"
-        repairPerformed "Reset Permissions"
+        repairPerformed "Reset Binary Permissions"
     fi
 }
 
@@ -323,15 +325,34 @@ fi
 # Does the JAMF.keychain exists?
 writeToLog "Checking if the Jamf Keychain exists..."
 
-if [[ -e "/Library/Application Support/JAMF/JAMF.keychain" ]]; then
+if [[ -e "${jamfKeychain}" ]]; then
     writeToLog "  -> True"
 elif [[ -e "${recoveryFiles}/JAMF.keychain" ]]; then
     writeToLog "  -> WARNING:  Jamf Keychain is missing!"
-    /bin/cp -f "${recoveryFiles}/JAMF.keychain"  "/Library/Application Support/JAMF/JAMF.keychain"
+    /bin/cp -f "${recoveryFiles}/JAMF.keychain"  "${jamfKeychain}"
     repairPerformed "Restored Jamf Keychain"
 else
     writeToLog "  -> WARNING:  Unable to locate the Jamf Keychain!"
     reenroll "Missing Jamf Keychain"
+fi
+
+# Checking the permissions on the Jamf Keychain; returns result.
+writeToLog "Verifying the Jamf Keychain permissions..."
+currentPermissions=$( /usr/bin/stat -f "%OLp" "${jamfKeychain}" )
+currentOwner=$( /usr/bin/stat -f "%Su:%Sg" "${jamfKeychain}" )
+
+# Verifying Permissions
+if [[ $currentPermissions == "600" && $currentOwner == "root:admin" ]]; then
+    writeToLog "  -> Proper permissions set"
+else
+    writeToLog "  -> WARNING:  Improper permissions found!"
+    writeToLog "    -> Currently they are:  ${currentPermissions} ${currentOwner}"
+    writeToLog "      -> Setting proper permissions..."
+    /usr/bin/chflags noschg "${jamfKeychain}"
+    /usr/bin/chflags nouchg "${jamfKeychain}"
+    /usr/sbin/chown root:admin "${jamfKeychain}"
+    /bin/chmod 600 "${jamfKeychain}"
+    repairPerformed "Reset Keychain Permissions"
 fi
 
 # Does the Jamf Software configuration exist and is it configured as expected?
@@ -400,7 +421,7 @@ else
 fi
 
 # Backup the Jamf Keychain and server configuration.
-/bin/cp -f "/Library/Application Support/JAMF/JAMF.keychain" "${recoveryFiles}"
+/bin/cp -f "${jamfKeychain}" "${recoveryFiles}"
 
 exitProcess "Enabled" 0
 EOF
