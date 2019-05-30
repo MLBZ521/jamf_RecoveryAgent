@@ -44,29 +44,25 @@ case $action in
     "Install" )
         echo "** Installing the Jamf Recovery Agent **"
 
-        if [[ ! -e "/etc/weekly.local" ]]; then
-            echo "Creating the weekly.local periodic directory..."
-            /bin/mkdir "/etc/weekly.local"
-            /usr/sbin/chown root:wheel "/etc/weekly.local"
-            /bin/chmod 755 "/etc/weekly.local"
-        fi
-
-        /bin/cat > "/etc/weekly.local/100.weekly.jra" <<'EOF'
+        /bin/cat > "/etc/periodic/weekly/100.weekly.jra" <<'EOF'
 #!/bin/bash
+
+echo ""
+echo "Running the Jamf Recovery Agent..."
 
 ##################################################
 # Define Variables
 EOF
 
         # Insert code
-        echo "jamfURL=\"${jamfURL}\"" >> "/etc/weekly.local/100.weekly.jra"
-        echo "expected_verifySSLCert=\"${expected_verifySSLCert}\"" >> "/etc/weekly.local/100.weekly.jra"
-        echo "jpsRootCA=\"${jpsRootCA}\"" >> "/etc/weekly.local/100.weekly.jra"
-        echo "jpsRootCASHA1=\"${jpsRootCASHA1}\"" >> "/etc/weekly.local/100.weekly.jra"
-        echo "invitationID=\"${invitationID}\"" >> "/etc/weekly.local/100.weekly.jra"
-        echo "testTrigger=\"${testTrigger}\"" >> "/etc/weekly.local/100.weekly.jra"
+        echo "jamfURL=\"${jamfURL}\"" >> "/etc/periodic/weekly/100.weekly.jra"
+        echo "expected_verifySSLCert=\"${expected_verifySSLCert}\"" >> "/etc/periodic/weekly/100.weekly.jra"
+        echo "jpsRootCA=\"${jpsRootCA}\"" >> "/etc/periodic/weekly/100.weekly.jra"
+        echo "jpsRootCASHA1=\"${jpsRootCASHA1}\"" >> "/etc/periodic/weekly/100.weekly.jra"
+        echo "invitationID=\"${invitationID}\"" >> "/etc/periodic/weekly/100.weekly.jra"
+        echo "testTrigger=\"${testTrigger}\"" >> "/etc/periodic/weekly/100.weekly.jra"
 
-        /bin/cat >> "/etc/weekly.local/100.weekly.jra" <<'EOF'
+        /bin/cat >> "/etc/periodic/weekly/100.weekly.jra" <<'EOF'
 
 ##################################################
 # Only modify the below variables if needed.
@@ -127,6 +123,7 @@ exitProcess() {
     writeToLog "Result: ${1}"
     defaultsJRA write last_Result "${1}"
     writeToLog "*****  jamf_RecoveryAgent Process:  COMPLETE  *****"
+    echo "Jamf Recovery Agent Result: ${1}..."
     exit $2
 }
 
@@ -170,7 +167,7 @@ checkBinaryPermissions() {
 
     # Verifying Permissions
     if [[ $currentPermissions == "555" && $currentOwner == "root:wheel" ]]; then
-        writeToLog "  -> Proper permissions set"
+        writeToLog "  -> Valid"
     else
         writeToLog "  -> WARNING:  Improper permissions found!"
         writeToLog "    -> Currently they are:  ${currentPermissions} ${currentOwner}"
@@ -281,7 +278,7 @@ do
 done
 
 # Check for a valid IP address and can connect to the "outside world"; returns result.
-writeToLog "Testing if the device has an active network interface..."
+writeToLog "Checking for an active network interface..."
 defaultInterfaceID=$( /sbin/route get default | /usr/bin/awk -F 'interface: ' '{print $2}' | /usr/bin/xargs )
 linkStatus=$( /sbin/ifconfig "${defaultInterfaceID}" | /usr/bin/awk -F 'status: ' '{print $2}' | /usr/bin/xargs )
 
@@ -304,17 +301,15 @@ else
 fi
 
 # Verify the Binary exists first.
-writeToLog "Testing the Jamf Binary..."
+writeToLog "Verifying the Jamf Binary exists..."
 
 if [[ -e "${jamfBinary}" ]]; then
+    writeToLog "  -> True"
     checkBinaryPermissions
 else
     writeToLog "  -> WARNING:  Unable to locate the Jamf Binary!"
     restoreJamfBinary
 fi
-
-# Check the 'health' of the Jamf Management Framework.
-writeToLog "Checking the health of the management framework..."
 
 # Does the Jamf Application Support folder exists?
 if [[ ! -e "/Library/Application Support/JAMF" ]]; then
@@ -323,7 +318,7 @@ if [[ ! -e "/Library/Application Support/JAMF" ]]; then
 fi
 
 # Does the JAMF.keychain exists?
-writeToLog "Checking if the Jamf Keychain exists..."
+writeToLog "Verifying the Jamf Keychain exists..."
 
 if [[ -e "${jamfKeychain}" ]]; then
     writeToLog "  -> True"
@@ -343,7 +338,7 @@ currentOwner=$( /usr/bin/stat -f "%Su:%Sg" "${jamfKeychain}" )
 
 # Verifying Permissions
 if [[ $currentPermissions == "600" && $currentOwner == "root:admin" ]]; then
-    writeToLog "  -> Proper permissions set"
+    writeToLog "  -> Valid"
 else
     writeToLog "  -> WARNING:  Improper permissions found!"
     writeToLog "    -> Currently they are:  ${currentPermissions} ${currentOwner}"
@@ -356,11 +351,12 @@ else
 fi
 
 # Does the Jamf Software configuration exist and is it configured as expected?
-writeToLog "Checking the Jamf Configuration..."
+writeToLog "Checking local configuration..."
 if [[ -e "/Library/Preferences/com.jamfsoftware.jamf.plist" ]]; then
     jss_url=$( /usr/bin/defaults read "/Library/Preferences/com.jamfsoftware.jamf" jss_url )
     
     if [[ "${jss_url}" == "${jpsURL}" ]]; then
+        writeToLog "  -> Valid"
         checkBinaryConnection
     else
         writeToLog "  -> WARNING:  Unexpected JPS URL Specified!"
@@ -401,9 +397,9 @@ checkValidationPolicy
 
 # Update local recovery files.
 writeToLog "Updating the Recovery Files..."
+jamfBinaryVersion=$( "${jamfBinary}" version | /usr/bin/awk -F 'version=' '{print $2}' | /usr/bin/xargs )
 
 if [[ -e "${recoveryFiles}/jamf" ]]; then
-    jamfBinaryVersion=$( "${jamfBinary}" version | /usr/bin/awk -F 'version=' '{print $2}' | /usr/bin/xargs )
     jamfRecoveryBinaryVersion=$( "${recoveryFiles}/jamf" version | /usr/bin/awk -F 'version=' '{print $2}' | /usr/bin/xargs )
 
     # Compares the current version and updates if there is a newer binary available.
@@ -415,6 +411,7 @@ if [[ -e "${recoveryFiles}/jamf" ]]; then
         defaultsJRA write latest_JamfBinaryVersion "${jamfBinaryVersion}"
     fi
 else
+    /bin/mkdir -p "${recoveryFiles}"
     writeToLog "  -> Creating a recovery Jamf Binary"
     /bin/cp -f "${jamfBinary}" "${recoveryFiles}"
     defaultsJRA write latest_JamfBinaryVersion "${jamfBinaryVersion}"
@@ -427,10 +424,10 @@ exitProcess "Enabled" 0
 EOF
 
         # Verify the files exist...
-        if [[ -e "/etc/weekly.local/100.weekly.jra" ]]; then
+        if [[ -e "/etc/periodic/weekly/100.weekly.jra" ]]; then
             echo "Setting permissions on the script..."
-            /usr/sbin/chown root:wheel "/etc/weekly.local/100.weekly.jra"
-            /bin/chmod 755 "/etc/weekly.local/100.weekly.jra"
+            /usr/sbin/chown root:wheel "/etc/periodic/weekly/100.weekly.jra"
+            /bin/chmod 755 "/etc/periodic/weekly/100.weekly.jra"
         else
             echo "Jamf Recovery Agent not found!"
             echo "*****  jamf_RecoveryAgent process:  FAILED  *****"
@@ -441,7 +438,7 @@ EOF
 
     "Uninstall" )
         echo "Uninstalling the Jamf Recovery Agent..."
-        /bin/rm -f "/etc/weekly.local/100.weekly.jra"
+        /bin/rm -f "/etc/periodic/weekly/100.weekly.jra"
     ;;
 
     "UninstallOld" )
@@ -477,7 +474,6 @@ EOF
             fi
         fi
     ;;
-
 esac
 
 echo "*****  jamf_RecoveryAgent process:  COMPLETE  *****"
