@@ -3,7 +3,7 @@
 ###################################################################################################
 # Script Name:  jamf_RecoveryAgent.sh
 # By:  Zack Thompson / Created:  2/14/2019
-# Version:  1.4.0a / Updated:  5/22/2019 / By:  ZT
+# Version:  1.4.0b / Updated:  5/30/2019 / By:  ZT
 #
 # Description:  This script checks the Jamf management framework, and if in an undesirable state, attempts to repair and/or re-enrolls the device into Jamf.
 #
@@ -44,7 +44,7 @@ case $action in
     "Install" )
         echo "** Installing the Jamf Recovery Agent **"
 
-        /bin/cat > "/etc/periodic/weekly/100.weekly.jra" <<'EOF'
+        /bin/cat > "/etc/periodic/weekly/100.jra" <<'EOF'
 #!/bin/bash
 
 echo ""
@@ -55,14 +55,14 @@ echo "Running the Jamf Recovery Agent..."
 EOF
 
         # Insert code
-        echo "jamfURL=\"${jamfURL}\"" >> "/etc/periodic/weekly/100.weekly.jra"
-        echo "expected_verifySSLCert=\"${expected_verifySSLCert}\"" >> "/etc/periodic/weekly/100.weekly.jra"
-        echo "jpsRootCA=\"${jpsRootCA}\"" >> "/etc/periodic/weekly/100.weekly.jra"
-        echo "jpsRootCASHA1=\"${jpsRootCASHA1}\"" >> "/etc/periodic/weekly/100.weekly.jra"
-        echo "invitationID=\"${invitationID}\"" >> "/etc/periodic/weekly/100.weekly.jra"
-        echo "testTrigger=\"${testTrigger}\"" >> "/etc/periodic/weekly/100.weekly.jra"
+        echo "jamfURL=\"${jamfURL}\"" >> "/etc/periodic/weekly/100.jra"
+        echo "expected_verifySSLCert=\"${expected_verifySSLCert}\"" >> "/etc/periodic/weekly/100.jra"
+        echo "jpsRootCA=\"${jpsRootCA}\"" >> "/etc/periodic/weekly/100.jra"
+        echo "jpsRootCASHA1=\"${jpsRootCASHA1}\"" >> "/etc/periodic/weekly/100.jra"
+        echo "invitationID=\"${invitationID}\"" >> "/etc/periodic/weekly/100.jra"
+        echo "testTrigger=\"${testTrigger}\"" >> "/etc/periodic/weekly/100.jra"
 
-        /bin/cat >> "/etc/periodic/weekly/100.weekly.jra" <<'EOF'
+        /bin/cat >> "/etc/periodic/weekly/100.jra" <<'EOF'
 
 ##################################################
 # Only modify the below variables if needed.
@@ -215,7 +215,7 @@ checkValidationPolicy () {
     else
         writeToLog "  -> WARNING:  Unable to execute Policy!"
         manage " / Failed Validation Policy"
-        
+
         # After attempting to recover, try executing again.
         checkValidationPolicy
     fi
@@ -354,7 +354,7 @@ fi
 writeToLog "Checking local configuration..."
 if [[ -e "/Library/Preferences/com.jamfsoftware.jamf.plist" ]]; then
     jss_url=$( /usr/bin/defaults read "/Library/Preferences/com.jamfsoftware.jamf" jss_url )
-    
+
     if [[ "${jss_url}" == "${jpsURL}" ]]; then
         writeToLog "  -> Valid"
         checkBinaryConnection
@@ -424,10 +424,10 @@ exitProcess "Enabled" 0
 EOF
 
         # Verify the files exist...
-        if [[ -e "/etc/periodic/weekly/100.weekly.jra" ]]; then
+        if [[ -e "/etc/periodic/weekly/100.jra" ]]; then
             echo "Setting permissions on the script..."
-            /usr/sbin/chown root:wheel "/etc/periodic/weekly/100.weekly.jra"
-            /bin/chmod 755 "/etc/periodic/weekly/100.weekly.jra"
+            /usr/sbin/chown root:wheel "/etc/periodic/weekly/100.jra"
+            /bin/chmod 755 "/etc/periodic/weekly/100.jra"
         else
             echo "Jamf Recovery Agent not found!"
             echo "*****  jamf_RecoveryAgent process:  FAILED  *****"
@@ -438,7 +438,7 @@ EOF
 
     "Uninstall" )
         echo "Uninstalling the Jamf Recovery Agent..."
-        /bin/rm -f "/etc/periodic/weekly/100.weekly.jra"
+        /bin/rm -f "/etc/periodic/weekly/100.jra"
     ;;
 
     "UninstallOld" )
