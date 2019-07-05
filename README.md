@@ -1,7 +1,7 @@
 jamf_RecoveryAgent
 ======
 
-A LaunchDaemon that monitors the health of the Jamf Management Framework.
+A process that monitors the health of the Jamf Management Framework.
 
 
 **Change Log:**  
@@ -9,8 +9,7 @@ A LaunchDaemon that monitors the health of the Jamf Management Framework.
     * v1.1.0 = Added support to report a repair action was taken
     * v1.2.0 = Added logic to track how many repairs are performed for each repair action
     * v1.3.0 = Added additional verbosity to identify which step triggered a manage and reenroll repair action (This would be recorded in the plist for the EA to report); Checking if an update to the Jamf binary is being performed and waiting for that to complete before running
-  * `build_JamfRecoveryAgent.sh`
-    * v1.1.0 = Added support to remove the JRA for situations where the device needs to be legitimately unmanaged and will not be wiped.  `setup_JamfRecoveryAgent.sh` expects either `Install` or `Uninstall` passed via Script Parameter 1.
+    * v1.4.0 = Switched to using periodic to control when to run the jra instead of a launchdaemon; didn't want to specify when exactly to run the jra as I didn't want all devices running it at the same time.  Peridoic will now control when to run the jra.
 
 ## Overview
 
@@ -39,26 +38,22 @@ Another difference is I prefer, whenever possible, to deploy things of this natu
 
 So what *does* this project do?  It creates a copy of the files and information needed to repair the management framework without needing to re-enroll (if possible).
 
-It backs up the following files:
+It creates backups of the following files:
   * Jamf Binary
     * And will check for, and backup a newer binary version, after upgrade
   * JAMF.keychain
 
-And from `/Library/Preferences/com.jamfsoftware.jamf.plist` records:
-  * jss_url
-  * verifySSLCert
-
 With this information, a device can have the Jamf Management Framework and it's connection to the Jamf Pro Server restored.  It will also resolve other common symptoms that can cause issues to the Management Framework.
 
-A LaunchDaemon is configured to run every seven days or upon a change to the following locations:
-  * /usr/local/bin/jamf
-  * /usr/local/jamf/bin/jamf
+By default, this script will install itself into the weekly periodic folder, which as it's name suggests, will run the health check weekly when periodic runs.  If you wanted to run it daily or monthly, simply change "daily" to the desired term, throughout the script.
 
 The process logs all details to the following log:  `/var/log/jamf_RecoveryAgent.log`.  See the [Example Files](../master/Example%20Files) folder for samples.
 
 The workflow is configured to only attempt to reinstate the Management Framework once and then a re-enroll once per run (this is configurable) so as not to have an endless loop occurring.
 
 An Extension Attribute is available to report on the status of the JRA as well.
+
+The logic will record several pieces of information to a plist, which is located here:  `/private/var/jra/jra.plist`.  All repair attempts and how many times each repair has been performed is also tracked.  The EA will check if a repair was performed and report what was performed and how many times it was performed, otherwise, it will report that the local JRA is simply `Enabled`.
 
 
 ## Workflow
@@ -72,15 +67,6 @@ This flowchart goes through the steps the JRA goes through to test the state of 
 #### To utilize this process, you need to do the following: 
   * Add script and Extension Attribute to the JPS
   * Create two policies
-  * Customize a few files
-
-##### Customize:
-  * Edit the variables needed in the script
-    * `jamf_RecoveryAgent.sh`
-  * Edit the plist domain as desired and match the Label value as well.
-    * `com.github.mlbz521.RecoveryAgent.plist`
-  * Run the `build_JamfRecoveryAgent.sh` script which will create the script
-    * `setup_JamfRecoveryAgent.sh`
 
 ##### Upload:
   * Add the following files into Jamf:
@@ -90,6 +76,7 @@ This flowchart goes through the steps the JRA goes through to test the state of 
 ##### Policies:
   * Policy 1
     * Purpose:  Installs the Jamf Recovery Agent
+      * Configure the Event, Frequency, and Scope however you normally deploy to your devices
     * Event:
       * Recurring Check-in
       * Enrollment
@@ -97,8 +84,21 @@ This flowchart goes through the steps the JRA goes through to test the state of 
     * Scope:
       * Target:  All Computers
     * Scripts Payload
-      * Add the `setup_JamfRecoveryAgent.sh` Script
-        * Script Parameter 1:  [ Install | Uninstall ]
+      * Add the `jamf_RecoveryAgent.sh` Script and set the Script Parameters
+        * Script Parameter 1:  Install or uninstall the agent
+          * [ `Install` | `Uninstall` ]
+        * Script Parameter 2:  Enter the Jamf Pro Server FQDN
+          * `jps.company.com`
+        * Script Parameter 2:  verifySSLCert Key
+          * `always`
+        * Script Parameter 2:  JPS Root CA Certificate Common Name
+          * `Organization's JSS Built-in Certificate Authority`
+        * Script Parameter 2:  JPS Root CA Certificate SHA-1 Hash
+          * `3FE77342FC69A07EEEA0C014AAC5BDBC6AE6FCFB`
+        * Script Parameter 2:  Invitation ID
+          * `239475012374912374023478123402092374091`
+        * Script Parameter 2:  Custom Trigger for Test Policy
+          * `checkJRA`
   * Policy 2
     * Purpose:  Validation Policy that is called by a Custom Trigger
     * Event:
@@ -107,4 +107,4 @@ This flowchart goes through the steps the JRA goes through to test the state of 
     * Scope:
       * Target:  All Computers
     * Files and Processes Payload
-      * Run command:  `echo "Policy Execution Successful!"`
+      * Run command:  `echo 'Policy Execution Successful!'`
