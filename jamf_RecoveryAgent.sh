@@ -442,7 +442,7 @@ EOF
     ;;
 
     "UninstallOld" )
-        launchDaemonLabel="edu.asu.RecoveryAgent"
+        launchDaemonLabel="com.github.mlbz521.RecoveryAgent"
         launchDaemonLocation="/Library/LaunchDaemons/${launchDaemonLabel}.plist"
         osVersion=$( /usr/bin/sw_vers -productVersion | /usr/bin/awk -F '.' '{print $2}' )
 
