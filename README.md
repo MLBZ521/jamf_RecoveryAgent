@@ -85,19 +85,22 @@ This flowchart goes through the steps the JRA goes through to test the state of 
       * Target:  All Computers
     * Scripts Payload
       * Add the `jamf_RecoveryAgent.sh` Script and set the Script Parameters
-        * Script Parameter 1:  Install or uninstall the agent
-          * [ `Install` | `Uninstall` ]
-        * Script Parameter 2:  Enter the Jamf Pro Server FQDN
+        * Script Parameter 4:  Install or uninstall the agent
+          * [ `Install` | `Uninstall` | `UninstallOld` ]
+            * `UninstallOld` is available if you were using the old launchdaemon version
+        * Script Paramter 5:
+          * Not used at this time/reserved for future use
+        * Script Parameter 6:  Enter the Jamf Pro Server FQDN
           * `jps.company.com`
-        * Script Parameter 2:  verifySSLCert Key
+        * Script Parameter 7:  verifySSLCert Key
           * `always`
-        * Script Parameter 2:  JPS Root CA Certificate Common Name
+        * Script Parameter 8:  JPS Root CA Certificate Common Name
           * `Organization's JSS Built-in Certificate Authority`
-        * Script Parameter 2:  JPS Root CA Certificate SHA-1 Hash
+        * Script Parameter 9:  JPS Root CA Certificate SHA-1 Hash
           * `3FE77342FC69A07EEEA0C014AAC5BDBC6AE6FCFB`
-        * Script Parameter 2:  Invitation ID
+        * Script Parameter 10:  Invitation ID
           * `239475012374912374023478123402092374091`
-        * Script Parameter 2:  Custom Trigger for Test Policy
+        * Script Parameter 11:  Custom Trigger for Test Policy
           * `checkJRA`
   * Policy 2
     * Purpose:  Validation Policy that is called by a Custom Trigger
